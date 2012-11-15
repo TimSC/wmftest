@@ -22,6 +22,7 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <Mferror.h>
 
 #ifdef __BORLANDC__
     #pragma hdrstop
@@ -186,8 +187,39 @@ void MyFrame::OnQuit(wxCommandEvent& WXUNUSED(event))
     Close(true);
 }
 
+HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex)
+{
+    HRESULT hr = S_OK;
+    DWORD dwMediaTypeIndex = 0;
+
+    while (SUCCEEDED(hr))
+    {
+        IMFMediaType *pType = NULL;
+        hr = pReader->GetNativeMediaType(dwStreamIndex, dwMediaTypeIndex, &pType);
+        if (hr == MF_E_INVALIDSTREAMNUMBER)
+        {
+            hr = S_OK;
+            break;
+        }
+        else if (SUCCEEDED(hr))
+        {
+            // Examine the media type. (Not shown.)
+
+            pType->Release();
+        }
+        ++dwMediaTypeIndex;
+    }
+    //return hr;
+	return dwMediaTypeIndex;
+}
+
+
 void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 {
+	//http://msdn.microsoft.com/en-us/library/windows/desktop/bb530123%28v=vs.85%29.aspx
+	//http://msdn.microsoft.com/en-gb/library/windows/desktop/dd389281%28v=vs.85%29.aspx#creating_source_reader
+	//http://m.cplusplus.com/forum/windows/77275/
+
     // Initialize the COM runtime.
     HRESULT hr;// = CoInitializeEx(0, COINIT_MULTITHREADED);
 	int test = -1;
@@ -207,6 +239,7 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 			test = SUCCEEDED(hr);
             if (SUCCEEDED(hr))
             {
+				test = EnumerateTypesForStream(pReader,0);
                 //ReadMediaFile(pReader);
                 pReader->Release();
             }
