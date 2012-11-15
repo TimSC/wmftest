@@ -25,6 +25,7 @@
 #include <Mferror.h>
 #include <fstream>
 using namespace std;
+#include "colours.h"
 
 #ifdef __BORLANDC__
     #pragma hdrstop
@@ -264,6 +265,7 @@ HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex, ofstream
     if (majorType == MFMediaType_Video)
     {
         subtype= MFVideoFormat_YV12;
+		//subtype= MFVideoFormat_UYVY;
     }
     else if (majorType == MFMediaType_Audio)
     {
@@ -356,9 +358,18 @@ void GetVideoSubType(GUID subType, wxString &out)
 	if(subType==MFVideoFormat_RGB32) out = "MFVideoFormat_RGB32";
 	if(subType==MFVideoFormat_ARGB32) out = "MFVideoFormat_ARGB32";
 	if(subType==MFVideoFormat_YV12) out = "MFVideoFormat_YV12";
+	if(subType==MFVideoFormat_AYUV) out = "MFVideoFormat_AYUV";
+	if(subType==MFVideoFormat_UYVY) out = "MFVideoFormat_UYVY";
 
+	if(subType==MFAudioFormat_PCM) out = "MFAudioFormat_PCM";
+}
 
+HRESULT DecodeViewFrame(BYTE *ppbBuffer, DWORD pcbCurrentLength, UINT32 width, 
+	UINT32 height, LONG plStride, wxString &subTypeStr, ofstream &log)
+{
+	log << "Decode "<< width << "," << height << "," << subTypeStr <<"\n";
 
+	return S_OK;
 }
 
 HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
@@ -366,7 +377,8 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
     HRESULT hr = S_OK;
     IMFSample *pSample = NULL;
     size_t  cSamples = 0;
-	
+    UINT32 width = 0;
+    UINT32 height = 0;	
 
     bool quit = false;
     while (!quit)
@@ -437,8 +449,13 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
 			hr = pCurrentType->GetGUID(MF_MT_SUBTYPE, &subType);
 			if(!SUCCEEDED(hr)) log << "Error 5\n";
 			int isVideo = (majorType==MFMediaType_Video);
-			if(isVideo) GetDefaultStride(pCurrentType, &plStride, log);
-			log << "subtype" <<(subType==MFVideoFormat_RGB32)<<","<<(subType==MFAudioFormat_PCM)<<"\n";
+			if(isVideo)
+			{	
+				GetDefaultStride(pCurrentType, &plStride, log);
+				log << "subtype" <<(subType==MFVideoFormat_RGB32)<<","<<(subType==MFAudioFormat_PCM)<<"\n";
+				hr = MFGetAttributeSize(pCurrentType, MF_MT_FRAME_SIZE, &width, &height);
+				if(!SUCCEEDED(hr)) log << "Error 20\n";
+			}
 
 			TCHAR szString[41]=L"";
 			wxString subTypeStr;
@@ -461,6 +478,10 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
 				DWORD pcbCurrentLength;
 				hr = ppBuffer->Lock(&ppbBuffer, &pcbMaxLength, &pcbCurrentLength);
 				log << "pcbMaxLength="<< pcbMaxLength << "\tpcbCurrentLength=" <<pcbCurrentLength << "\n";
+
+				if(isVideo)
+					DecodeViewFrame(ppbBuffer, pcbCurrentLength, width, height, plStride, subTypeStr, log);
+
 				ppBuffer->Unlock();
 			}
 
