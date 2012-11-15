@@ -336,12 +336,23 @@ done:
     return hr;
 }
 
-HRESULT ProcessSamples(IMFSourceReader *pReader)
+void GetVideoSubType(GUID subType, wxString &out)
+{
+	out = "Unknown";
+	if(subType==MFVideoFormat_RGB8) out = "MFVideoFormat_RGB8";
+	if(subType==MFVideoFormat_RGB555) out = "MFVideoFormat_RGB555";
+	if(subType==MFVideoFormat_RGB565) out = "MFVideoFormat_RGB565";
+	if(subType==MFVideoFormat_RGB24) out = "MFVideoFormat_RGB24";
+	if(subType==MFVideoFormat_RGB32) out = "MFVideoFormat_RGB32";
+	if(subType==MFVideoFormat_ARGB32) out = "MFVideoFormat_ARGB32";
+}
+
+HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
 {
     HRESULT hr = S_OK;
     IMFSample *pSample = NULL;
     size_t  cSamples = 0;
-	ofstream log("log.txt");
+	
 
     bool quit = false;
     while (!quit)
@@ -400,18 +411,23 @@ HRESULT ProcessSamples(IMFSourceReader *pReader)
         {
 			IMFMediaType *pCurrentType = NULL;
 			LONG plStride = 0;
-			GUID majorType, subType;
+			GUID majorType=GUID_NULL, subType=GUID_NULL;
 
 			HRESULT hr = pReader->GetCurrentMediaType(streamIndex, &pCurrentType);
+			if(!SUCCEEDED(hr)) log << "Error 3\n";
 			hr = pCurrentType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
+			if(!SUCCEEDED(hr)) log << "Error 4\n";
 			hr = pCurrentType->GetGUID(MF_MT_SUBTYPE, &subType);
+			if(!SUCCEEDED(hr)) log << "Error 5\n";
 			int isVideo = (majorType==MFMediaType_Video);
 			if(isVideo) GetDefaultStride(pCurrentType, &plStride, log);
 			log << "subtype" <<(subType==MFVideoFormat_RGB32)<<","<<(subType==MFAudioFormat_PCM)<<"\n";
 
-			TCHAR szString[41];
+			TCHAR szString[41]=L"";
+			wxString subTypeStr;
+			GetVideoSubType(subType, subTypeStr);
 			::StringFromGUID2(subType, szString, 41);
-			log << "subtypeGUID" << szString << "\n";
+			log << "subtype\t" << szString << "\t"<<subTypeStr << "\n";
 
 			IMFMediaBuffer *ppBuffer = NULL;
 			hr = pSample->ConvertToContiguousBuffer(&ppBuffer);
@@ -456,6 +472,8 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 	//http://msdn.microsoft.com/en-us/library/windows/desktop/bb530123%28v=vs.85%29.aspx
 	//http://msdn.microsoft.com/en-gb/library/windows/desktop/dd389281%28v=vs.85%29.aspx#creating_source_reader
 	//http://m.cplusplus.com/forum/windows/77275/
+	ofstream log("log.txt");
+	log << "Init\n";
 
     // Initialize the COM runtime.
     HRESULT hr;// = CoInitializeEx(0, COINIT_MULTITHREADED);
@@ -473,7 +491,8 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
         {
             // Create the source reader.
             IMFSourceReader *pReader;
-            hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\MVI_4229.MOV", NULL, &pReader);
+            //hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\MVI_4229.MOV", NULL, &pReader);
+			hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\test.avi", NULL, &pReader);
 			test = SUCCEEDED(hr);
             if (SUCCEEDED(hr))
             {
@@ -483,9 +502,12 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 				debugStr = debugStr + test2;
 				//test = EnumerateTypesForStream(pReader, 2, test2);
 				//debugStr = debugStr + test2;
-				ConfigureDecoder(pReader,0);
-				ConfigureDecoder(pReader,1);
-				ProcessSamples(pReader);
+				hr = ConfigureDecoder(pReader,0);
+				if(!SUCCEEDED(hr)) log << "Error 1\n";
+				hr = ConfigureDecoder(pReader,1);
+				if(!SUCCEEDED(hr)) log << "Error 2\n";
+				
+				ProcessSamples(pReader, log);
                 //ReadMediaFile(pReader);
                 pReader->Release();
             }
@@ -494,7 +516,7 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
         }
         //CoUninitialize();
     }
-
+	log << std::flush;
 
     wxMessageBox(wxString::Format
                  (
