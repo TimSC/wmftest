@@ -187,7 +187,7 @@ void MyFrame::OnQuit(wxCommandEvent& WXUNUSED(event))
     Close(true);
 }
 
-HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex)
+HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex, wxString &out)
 {
     HRESULT hr = S_OK;
     DWORD dwMediaTypeIndex = 0;
@@ -204,6 +204,13 @@ HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex)
         else if (SUCCEEDED(hr))
         {
             // Examine the media type. (Not shown.)
+			GUID majorType, subtype;
+			IMFMediaType *pNativeType = NULL;
+			hr = pReader->GetNativeMediaType(dwStreamIndex, 0, &pNativeType);
+			hr = pNativeType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
+			//hr = pNativeType->GetGUID(MF_MT_SUBTYPE, &subtype);
+			out = wxString::Format("%i, Vid %i, Aud %i\n", dwMediaTypeIndex, 
+				majorType==MFMediaType_Video, majorType==MFMediaType_Audio);
 
             pType->Release();
         }
@@ -214,6 +221,74 @@ HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex)
 }
 
 
+HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex)
+{
+    IMFMediaType *pNativeType = NULL;
+    IMFMediaType *pType = NULL;
+
+    // Find the native format of the stream.
+    HRESULT hr = pReader->GetNativeMediaType(dwStreamIndex, 0, &pNativeType);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    GUID majorType, subtype;
+
+    // Find the major type.
+    hr = pNativeType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
+    if (FAILED(hr))
+    {
+        goto done;
+    }
+
+    // Define the output type.
+    hr = MFCreateMediaType(&pType);
+    if (FAILED(hr))
+    {
+        goto done;
+    }
+
+    hr = pType->SetGUID(MF_MT_MAJOR_TYPE, majorType);
+    if (FAILED(hr))
+    {
+        goto done;
+    }
+
+    // Select a subtype.
+    if (majorType == MFMediaType_Video)
+    {
+        subtype= MFVideoFormat_RGB32;
+    }
+    else if (majorType == MFMediaType_Audio)
+    {
+        subtype = MFAudioFormat_PCM;
+    }
+    else
+    {
+        // Unrecognized type. Skip.
+        goto done;
+    }
+
+    hr = pType->SetGUID(MF_MT_SUBTYPE, subtype);
+    if (FAILED(hr))
+    {
+        goto done;
+    }
+
+    // Set the uncompressed format.
+    hr = pReader->SetCurrentMediaType(dwStreamIndex, NULL, pType);
+    if (FAILED(hr))
+    {
+        goto done;
+    }
+
+done:
+    if(pNativeType) pNativeType->Release();
+    if(pType) pType->Release();
+    return hr;
+}
+
 void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 {
 	//http://msdn.microsoft.com/en-us/library/windows/desktop/bb530123%28v=vs.85%29.aspx
@@ -223,6 +298,7 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
     // Initialize the COM runtime.
     HRESULT hr;// = CoInitializeEx(0, COINIT_MULTITHREADED);
 	int test = -1;
+	wxString test2, debugStr;
 	//if(hr==S_OK) test = -10;
 	//if(hr==S_FALSE) test = -11;
 	//if(hr==RPC_E_CHANGED_MODE) test = -12;
@@ -239,7 +315,14 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 			test = SUCCEEDED(hr);
             if (SUCCEEDED(hr))
             {
-				test = EnumerateTypesForStream(pReader,0);
+				test = EnumerateTypesForStream(pReader, 0, test2);
+				debugStr = debugStr + test2;
+				test = EnumerateTypesForStream(pReader, 1, test2);
+				debugStr = debugStr + test2;
+				test = EnumerateTypesForStream(pReader, 2, test2);
+				debugStr = debugStr + test2;
+				ConfigureDecoder(pReader,0);
+				ConfigureDecoder(pReader,1);
                 //ReadMediaFile(pReader);
                 pReader->Release();
             }
@@ -255,10 +338,10 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
                     "Welcome to %s!\n"
                     "\n"
                     "This is the minimal wxWidgets sample\n"
-                    "running under %s. test=%i",
+                    "running under %s. test=%i %s",
                     wxVERSION_STRING,
                     wxGetOsDescription(),
-					test
+					test, debugStr
                  ),
                  "About wxWidgets minimal sample",
                  wxOK | wxICON_INFORMATION,
