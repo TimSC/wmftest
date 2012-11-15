@@ -23,6 +23,8 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <Mferror.h>
+#include <fstream>
+using namespace std;
 
 #ifdef __BORLANDC__
     #pragma hdrstop
@@ -289,6 +291,166 @@ done:
     return hr;
 }
 
+HRESULT GetDefaultStride(IMFMediaType *pType, LONG *plStride, ofstream &log)
+{
+    LONG lStride = 0;
+
+    // Try to get the default stride from the media type.
+    HRESULT hr = pType->GetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32*)&lStride);
+
+    if (FAILED(hr))
+    {
+        // Attribute not set. Try to calculate the default stride.
+
+        GUID subtype = GUID_NULL;
+
+        UINT32 width = 0;
+        UINT32 height = 0;
+        // Get the subtype and the image size.
+        hr = pType->GetGUID(MF_MT_SUBTYPE, &subtype);
+        if (FAILED(hr))
+        {
+            goto done;
+        }
+        hr = MFGetAttributeSize(pType, MF_MT_FRAME_SIZE, &width, &height);
+        if (FAILED(hr))
+        {
+            goto done;
+        }
+        hr = MFGetStrideForBitmapInfoHeader(subtype.Data1, width, &lStride);
+        if (FAILED(hr))
+        {
+            goto done;
+        }
+
+        // Set the attribute for later reference.
+        (void)pType->SetUINT32(MF_MT_DEFAULT_STRIDE, UINT32(lStride));
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        *plStride = lStride;
+    }
+
+done:
+    return hr;
+}
+
+HRESULT ProcessSamples(IMFSourceReader *pReader)
+{
+    HRESULT hr = S_OK;
+    IMFSample *pSample = NULL;
+    size_t  cSamples = 0;
+	ofstream log("log.txt");
+
+    bool quit = false;
+    while (!quit)
+    {
+        DWORD streamIndex, flags;
+        LONGLONG llTimeStamp;
+
+        hr = pReader->ReadSample(
+            MF_SOURCE_READER_ANY_STREAM,    // Stream index.
+            0,                              // Flags.
+            &streamIndex,                   // Receives the actual stream index. 
+            &flags,                         // Receives status flags.
+            &llTimeStamp,                   // Receives the time stamp.
+            &pSample                        // Receives the sample or NULL.
+            );
+
+        if (FAILED(hr))
+        {
+            break;
+        }
+
+        log << wxString::Format(L"Stream %d (%I64d)\n", streamIndex, llTimeStamp);
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM)
+        {
+            log << wxString::Format(L"\tEnd of stream\n");
+            quit = true;
+        }
+        if (flags & MF_SOURCE_READERF_NEWSTREAM)
+        {
+           log << wxString::Format(L"\tNew stream\n");
+        }
+        if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
+        {
+           log << wxString::Format(L"\tNative type changed\n");
+        }
+        if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+        {
+           log << wxString::Format(L"\tCurrent type changed\n");
+        }
+        if (flags & MF_SOURCE_READERF_STREAMTICK)
+        {
+            log << wxString::Format(L"\tStream tick\n");
+        }
+
+        if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
+        {
+            // The format changed. Reconfigure the decoder.
+            hr = ConfigureDecoder(pReader, streamIndex);
+            if (FAILED(hr))
+            {
+                break;
+            }
+        }
+
+        if (pSample)
+        {
+			IMFMediaType *pCurrentType = NULL;
+			LONG plStride = 0;
+			GUID majorType, subType;
+
+			HRESULT hr = pReader->GetCurrentMediaType(streamIndex, &pCurrentType);
+			hr = pCurrentType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
+			hr = pCurrentType->GetGUID(MF_MT_SUBTYPE, &subType);
+			int isVideo = (majorType==MFMediaType_Video);
+			if(isVideo) GetDefaultStride(pCurrentType, &plStride, log);
+			log << "subtype" <<(subType==MFVideoFormat_RGB32)<<","<<(subType==MFAudioFormat_PCM)<<"\n";
+
+			TCHAR szString[41];
+			::StringFromGUID2(subType, szString, 41);
+			log << "subtypeGUID" << szString << "\n";
+
+			IMFMediaBuffer *ppBuffer = NULL;
+			hr = pSample->ConvertToContiguousBuffer(&ppBuffer);
+			log << "ConvertToContiguousBuffer=" << SUCCEEDED(hr) << "\tstride="<< plStride << "\n";
+
+			IMF2DBuffer *m_p2DBuffer = NULL;
+			ppBuffer->QueryInterface(IID_IMF2DBuffer, (void**)&m_p2DBuffer);
+			log << "IMF2DBuffer=" << (m_p2DBuffer != NULL) << "\n";
+
+			if(SUCCEEDED(hr))
+			{
+				BYTE *ppbBuffer;
+				DWORD pcbMaxLength;
+				DWORD pcbCurrentLength;
+				hr = ppBuffer->Lock(&ppbBuffer, &pcbMaxLength, &pcbCurrentLength);
+				log << "pcbMaxLength="<< pcbMaxLength << "\tpcbCurrentLength=" <<pcbCurrentLength << "\n";
+				ppBuffer->Unlock();
+			}
+
+			if(ppBuffer) ppBuffer->Release();
+
+            ++cSamples;
+        }
+
+        if(pSample) pSample->Release();
+    }
+
+    if (FAILED(hr))
+    {
+        log << wxString::Format(L"ProcessSamples FAILED, hr = 0x%x\n", hr);
+    }
+    else
+    {
+        log << wxString::Format(L"Processed %d samples\n", cSamples);
+    }
+	if(pSample) pSample->Release();
+    return hr;
+}
+
 void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 {
 	//http://msdn.microsoft.com/en-us/library/windows/desktop/bb530123%28v=vs.85%29.aspx
@@ -319,10 +481,11 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 				debugStr = debugStr + test2;
 				test = EnumerateTypesForStream(pReader, 1, test2);
 				debugStr = debugStr + test2;
-				test = EnumerateTypesForStream(pReader, 2, test2);
-				debugStr = debugStr + test2;
+				//test = EnumerateTypesForStream(pReader, 2, test2);
+				//debugStr = debugStr + test2;
 				ConfigureDecoder(pReader,0);
 				ConfigureDecoder(pReader,1);
+				ProcessSamples(pReader);
                 //ReadMediaFile(pReader);
                 pReader->Release();
             }
