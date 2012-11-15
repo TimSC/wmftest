@@ -223,7 +223,7 @@ HRESULT EnumerateTypesForStream(IMFSourceReader *pReader, DWORD dwStreamIndex, w
 }
 
 
-HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex)
+HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex, ofstream &log)
 {
     IMFMediaType *pNativeType = NULL;
     IMFMediaType *pType = NULL;
@@ -241,6 +241,7 @@ HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex)
     hr = pNativeType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
     if (FAILED(hr))
     {
+		log << "Error 6\n";
         goto done;
     }
 
@@ -248,19 +249,21 @@ HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex)
     hr = MFCreateMediaType(&pType);
     if (FAILED(hr))
     {
+		log << "Error 7\n";
         goto done;
     }
 
     hr = pType->SetGUID(MF_MT_MAJOR_TYPE, majorType);
     if (FAILED(hr))
     {
+		log << "Error 8\n";
         goto done;
     }
 
     // Select a subtype.
     if (majorType == MFMediaType_Video)
     {
-        subtype= MFVideoFormat_RGB32;
+        subtype= MFVideoFormat_RGB24;
     }
     else if (majorType == MFMediaType_Audio)
     {
@@ -269,19 +272,26 @@ HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex)
     else
     {
         // Unrecognized type. Skip.
+		log << "Error 9\n";
         goto done;
     }
 
     hr = pType->SetGUID(MF_MT_SUBTYPE, subtype);
     if (FAILED(hr))
     {
+		log << "Error 10\n";
         goto done;
     }
 
     // Set the uncompressed format.
     hr = pReader->SetCurrentMediaType(dwStreamIndex, NULL, pType);
+	if (hr == MF_E_TOPO_CODEC_NOT_FOUND){log << "Error MF_E_TOPO_CODEC_NOT_FOUND\n";goto done;}
+	if (hr == MF_E_INVALIDMEDIATYPE){log << "Error MF_E_INVALIDMEDIATYPE\n";goto done;}
+	if (hr == MF_E_INVALIDREQUEST){log << "Error MF_E_INVALIDREQUEST\n";goto done;}
+
     if (FAILED(hr))
     {
+		log << "Error 11\n";
         goto done;
     }
 
@@ -345,6 +355,10 @@ void GetVideoSubType(GUID subType, wxString &out)
 	if(subType==MFVideoFormat_RGB24) out = "MFVideoFormat_RGB24";
 	if(subType==MFVideoFormat_RGB32) out = "MFVideoFormat_RGB32";
 	if(subType==MFVideoFormat_ARGB32) out = "MFVideoFormat_ARGB32";
+
+
+
+
 }
 
 HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
@@ -400,7 +414,7 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
         if (flags & MF_SOURCE_READERF_NATIVEMEDIATYPECHANGED)
         {
             // The format changed. Reconfigure the decoder.
-            hr = ConfigureDecoder(pReader, streamIndex);
+            hr = ConfigureDecoder(pReader, streamIndex, log);
             if (FAILED(hr))
             {
                 break;
@@ -415,6 +429,9 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
 
 			HRESULT hr = pReader->GetCurrentMediaType(streamIndex, &pCurrentType);
 			if(!SUCCEEDED(hr)) log << "Error 3\n";
+			BOOL isComp = FALSE;
+			hr = pCurrentType->IsCompressedFormat(&isComp);
+			log << "iscompressed" << isComp << "\n";
 			hr = pCurrentType->GetGUID(MF_MT_MAJOR_TYPE, &majorType);
 			if(!SUCCEEDED(hr)) log << "Error 4\n";
 			hr = pCurrentType->GetGUID(MF_MT_SUBTYPE, &subType);
@@ -491,8 +508,8 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
         {
             // Create the source reader.
             IMFSourceReader *pReader;
-            //hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\MVI_4229.MOV", NULL, &pReader);
-			hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\test.avi", NULL, &pReader);
+            hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\MVI_4229.MOV", NULL, &pReader);
+			//hr = MFCreateSourceReaderFromURL(L"c:\\Users\\tim\\Desktop\\Faceware\\test.avi", NULL, &pReader);
 			test = SUCCEEDED(hr);
             if (SUCCEEDED(hr))
             {
@@ -502,9 +519,9 @@ void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 				debugStr = debugStr + test2;
 				//test = EnumerateTypesForStream(pReader, 2, test2);
 				//debugStr = debugStr + test2;
-				hr = ConfigureDecoder(pReader,0);
+				hr = ConfigureDecoder(pReader,0,log);
 				if(!SUCCEEDED(hr)) log << "Error 1\n";
-				hr = ConfigureDecoder(pReader,1);
+				hr = ConfigureDecoder(pReader,1,log);
 				if(!SUCCEEDED(hr)) log << "Error 2\n";
 				
 				ProcessSamples(pReader, log);
