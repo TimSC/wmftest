@@ -263,7 +263,7 @@ HRESULT ConfigureDecoder(IMFSourceReader *pReader, DWORD dwStreamIndex, ofstream
     // Select a subtype.
     if (majorType == MFMediaType_Video)
     {
-        subtype= MFVideoFormat_RGB24;
+        subtype= MFVideoFormat_YV12;
     }
     else if (majorType == MFMediaType_Audio)
     {
@@ -355,7 +355,7 @@ void GetVideoSubType(GUID subType, wxString &out)
 	if(subType==MFVideoFormat_RGB24) out = "MFVideoFormat_RGB24";
 	if(subType==MFVideoFormat_RGB32) out = "MFVideoFormat_RGB32";
 	if(subType==MFVideoFormat_ARGB32) out = "MFVideoFormat_ARGB32";
-
+	if(subType==MFVideoFormat_YV12) out = "MFVideoFormat_YV12";
 
 
 
@@ -487,6 +487,7 @@ HRESULT ProcessSamples(IMFSourceReader *pReader, ofstream &log)
 void MyFrame::OnAbout(wxCommandEvent& WXUNUSED(event))
 {
 	//http://msdn.microsoft.com/en-us/library/windows/desktop/bb530123%28v=vs.85%29.aspx
+	//http://msdn.microsoft.com/en-gb/library/windows/desktop/dd940436%28v=vs.85%29.aspx
 	//http://msdn.microsoft.com/en-gb/library/windows/desktop/dd389281%28v=vs.85%29.aspx#creating_source_reader
 	//http://m.cplusplus.com/forum/windows/77275/
 	ofstream log("log.txt");
