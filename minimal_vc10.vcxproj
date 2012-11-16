@@ -506,10 +506,14 @@
     </Bscmake>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="colours.cpp" />
     <ClCompile Include="minimal.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sample.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="colours.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

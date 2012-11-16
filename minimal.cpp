@@ -365,10 +365,31 @@ void GetVideoSubType(GUID subType, wxString &out)
 }
 
 HRESULT DecodeViewFrame(BYTE *ppbBuffer, DWORD pcbCurrentLength, UINT32 width, 
-	UINT32 height, LONG plStride, wxString &subTypeStr, ofstream &log)
+	UINT32 height, LONG lStride, wxString &subTypeStr, ofstream &log)
 {
 	log << "Decode "<< width << "," << height << "," << subTypeStr <<"\n";
 
+	BYTE *rgb = new BYTE[height * width * 3];
+	YV12_To_RGB32(ppbBuffer, lStride, width, height, rgb, width);
+
+	//for(int i=0;i<height * width * 3;i++) rgb[i] = 255;
+
+	//HBITMAP test = CreateBitmap(width,height,3,8,rgb);
+	/*ofstream test("test.txt");
+	for(int y=0;y<height;y++)
+	{
+		for(int x=0;x<width;x++)
+		{
+			BYTE pix = rgb[(y*width + x) * 3];
+			wxString pixStr = wxString::Format(L"%i", pix);
+			test << pixStr << ",";
+		}
+		test << "\n";
+		test << flush;
+	}*/
+	
+
+	delete rgb;
 	return S_OK;
 }
 
